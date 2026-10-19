@@ -34,16 +34,15 @@ class FrameSubtype(int, Enum):
 
 @dataclass
 class ParsedFrame:
-    """Normalized representation of an 802.11 management frame."""
     timestamp: float
     subtype: FrameSubtype
     subtype_name: str
-    addr1: Optional[str] = None  # Receiver Address (RA) / Destination (DA)
-    addr2: Optional[str] = None  # Transmitter Address (TA) / Source (SA)
-    addr3: Optional[str] = None  # BSSID / Filtering Address
+    addr1: Optional[str] = None  # Destination / RA
+    addr2: Optional[str] = None  # Source / TA
+    addr3: Optional[str] = None  # BSSID
     ssid: Optional[str] = None
     channel: Optional[int] = None
-    crypto_type: str = "OPEN"    # OPEN, WEP, WPA, WPA2, WPA3
+    crypto_type: str = "OPEN"
     signal_dbm: Optional[int] = None
     sequence_num: Optional[int] = None
     raw_packet: Any = field(default=None, repr=False)
@@ -51,7 +50,6 @@ class ParsedFrame:
 
 @dataclass
 class Alert:
-    """Security alert emitted by detection modules."""
     rule_name: str
     severity: Severity
     description: str
@@ -82,7 +80,6 @@ class Alert:
 
 @dataclass
 class AccessPoint:
-    """Tracked 802.11 Access Point."""
     bssid: str
     ssid: str
     channel: Optional[int] = None

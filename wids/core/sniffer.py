@@ -1,21 +1,13 @@
-"""
-Packet capture and PCAP ingestion engine for wids-sentinel.
-"""
-
 from typing import Callable, Optional
 import os
-import time
 
 from scapy.all import sniff, PcapReader
-from scapy.layers.dot11 import Dot11
 
 from wids.core.parser import FrameParser
 from wids.core.models import ParsedFrame
 
 
 class PacketSource:
-    """Manages packet ingestion from either a live Wi-Fi interface or a PCAP capture file."""
-
     def __init__(
         self,
         interface: Optional[str] = None,

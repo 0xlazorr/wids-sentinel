@@ -1,7 +1,4 @@
-"""
-Deauthentication and Disassociation Flood Detection Module.
-Detects burst attacks targeting client disconnections.
-"""
+"""Deauthentication and disassociation flood detector."""
 
 from collections import defaultdict, deque
 from typing import Dict, List, Tuple
@@ -12,24 +9,15 @@ from wids.core.models import ParsedFrame, FrameSubtype, Alert, Severity
 
 
 class DeauthFloodDetector(BaseDetector):
-    """
-    Detects 802.11 Deauthentication and Disassociation flood attacks.
-    Uses sliding-window rate tracking per (transmitter, receiver) and per BSSID.
-    """
-
     def __init__(self, config):
         super().__init__(config)
         self.enabled = config.enable_deauth_detection or config.enable_disassoc_detection
         self.window_seconds = config.deauth_window_seconds
         self.threshold = config.deauth_threshold_burst
 
-        # Sliding window history: key -> deque of timestamps
-        # Key: (bssid, source_mac, target_mac, frame_type)
         self._history: Dict[Tuple[str, str, str, str], deque] = defaultdict(deque)
-
-        # Alert cooldown to avoid alert storming
         self._last_alert_time: Dict[Tuple[str, str, str, str], float] = {}
-        self.cooldown_period = 5.0  # seconds between repeated alerts for the same stream
+        self.cooldown_period = 5.0
 
     @property
     def name(self) -> str:
@@ -51,7 +39,7 @@ class DeauthFloodDetector(BaseDetector):
         if not (is_deauth or is_disassoc):
             return alerts
 
-        frame_type_str = "Deauthentication" if is_deauth else "Disassociation"
+        frame_type_str = "Deauth" if is_deauth else "Disassoc"
         src = frame.addr2 or "unknown"
         dst = frame.addr1 or "unknown"
         bssid = frame.addr3 or "unknown"
@@ -59,7 +47,7 @@ class DeauthFloodDetector(BaseDetector):
 
         key = (bssid, src, dst, frame_type_str)
 
-        # Periodic cleanup of expired keys to prevent memory leak on high-traffic networks
+        # Prune stale tracking keys periodically
         if len(self._history) > 1000:
             stale_keys = [
                 k for k, win in self._history.items()
@@ -76,8 +64,6 @@ class DeauthFloodDetector(BaseDetector):
                 del self._last_alert_time[sa]
 
         window = self._history[key]
-
-        # Prune expired timestamps from the sliding window
         window.append(current_time)
         while window and (current_time - window[0] > self.window_seconds):
             window.popleft()
@@ -92,21 +78,14 @@ class DeauthFloodDetector(BaseDetector):
                 is_broadcast = (dst.lower() == "ff:ff:ff:ff:ff:ff")
                 is_auth_ap = bssid.lower() in self.config.authorized_aps
 
-                if is_broadcast or is_auth_ap:
-                    severity = Severity.CRITICAL
-                else:
-                    severity = Severity.HIGH
-
-                target_desc = "broadcast (all clients)" if is_broadcast else f"client [{dst}]"
+                severity = Severity.CRITICAL if (is_broadcast or is_auth_ap) else Severity.HIGH
+                target_desc = "broadcast" if is_broadcast else dst
                 desc = (
-                    f"Possible 802.11 {frame_type_str} flood attack detected! "
-                    f"Transmitter [{src}] injected {count} {frame_type_str} frames in "
-                    f"{self.window_seconds:.1f}s targeting {target_desc} on BSSID [{bssid}]."
+                    f"{frame_type_str} flood: {count} frames in {self.window_seconds:.1f}s "
+                    f"from {src} targeting {target_desc} (BSSID: {bssid})"
                 )
-
                 mitigation = (
-                    "Enable 802.11w Protected Management Frames (PMF / Management Frame Protection) "
-                    "on the AP and clients to enforce cryptographic signatures on deauth/disassoc frames."
+                    "Enforce 802.11w (PMF) on AP and clients to reject unauthenticated management frames."
                 )
 
                 alert = Alert(

@@ -1,18 +1,11 @@
-"""
-Alert formatting utilities using Rich and JSON.
-"""
-
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.table import Table
 
 from wids.core.models import Alert, Severity
 
 
 class AlertFormatter:
-    """Renders Alert objects into styled Rich panels or structured text."""
-
     SEVERITY_COLORS = {
         Severity.INFO: "blue",
         Severity.LOW: "cyan",

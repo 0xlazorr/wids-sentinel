@@ -62,3 +62,16 @@ def test_channel_mismatch_alert(base_config):
     assert alert.severity == Severity.MEDIUM
     assert alert.details["expected_channel"] == 6
     assert alert.details["observed_channel"] == 1
+
+
+def test_hidden_ssid_no_evil_twin_alert(base_config):
+    detector = EvilTwinDetector(base_config)
+    # Beacons with empty/hidden SSID from two different BSSIDs
+    raw1 = make_beacon("", "00:aa:bb:cc:dd:01")
+    raw2 = make_beacon("", "00:aa:bb:cc:dd:02")
+
+    alerts1 = detector.process(FrameParser.parse(raw1))
+    alerts2 = detector.process(FrameParser.parse(raw2))
+
+    assert len(alerts1) == 0
+    assert len(alerts2) == 0

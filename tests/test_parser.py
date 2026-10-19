@@ -53,3 +53,16 @@ def test_parse_non_80211():
     pkt = IP(dst="1.1.1.1") / ICMP()
     parsed = FrameParser.parse(pkt)
     assert parsed is None
+
+
+def test_sanitize_ssid_null_bytes():
+    assert FrameParser._sanitize_ssid("WiFi\x00\x00") == "WiFi"
+    assert FrameParser._sanitize_ssid("\x00\x00\x00") == "<Hidden SSID>"
+    assert FrameParser._sanitize_ssid(None) is None
+
+
+def test_normalize_mac():
+    assert FrameParser._normalize_mac("00:11:22:33:44:55") == "00:11:22:33:44:55"
+    assert FrameParser._normalize_mac("AA:BB:CC:DD:EE:FF") == "aa:bb:cc:dd:ee:ff"
+    assert FrameParser._normalize_mac(b"\xaa\xbb\xcc\xdd\xee\xff") == "aa:bb:cc:dd:ee:ff"
+    assert FrameParser._normalize_mac(None) is None

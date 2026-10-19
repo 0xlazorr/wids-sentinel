@@ -36,9 +36,19 @@ class FrameParser:
         13: (FrameSubtype.ACTION, "Action"),
     }
 
+    @staticmethod
+    def _normalize_mac(addr) -> Optional[str]:
+        if not addr:
+            return None
+        if isinstance(addr, (bytes, bytearray)):
+            try:
+                return ":".join(f"{b:02x}" for b in addr)
+            except Exception:
+                return None
+        return str(addr).strip().lower()
+
     @classmethod
     def parse(cls, packet) -> Optional[ParsedFrame]:
-        """Convert a Scapy packet into ParsedFrame if it has a Dot11 layer."""
         if not packet.haslayer(Dot11):
             return None
 
@@ -46,7 +56,7 @@ class FrameParser:
         raw_type = dot11.type
         raw_subtype = dot11.subtype
 
-        # We focus on management frames (type 0)
+        # Management frames only (type 0)
         if raw_type != 0:
             return None
 
@@ -54,29 +64,26 @@ class FrameParser:
             raw_subtype, (FrameSubtype.OTHER, f"Management-{raw_subtype}")
         )
 
-        # Extract addresses
-        addr1 = dot11.addr1.lower() if dot11.addr1 else None
-        addr2 = dot11.addr2.lower() if dot11.addr2 else None
-        addr3 = dot11.addr3.lower() if dot11.addr3 else None
+        addr1 = cls._normalize_mac(dot11.addr1)
+        addr2 = cls._normalize_mac(dot11.addr2)
+        addr3 = cls._normalize_mac(dot11.addr3)
 
-        # Extract sequence control
+        # Sequence control (high 12 bits)
         seq_num = None
         if hasattr(dot11, "SC") and dot11.SC is not None:
             seq_num = dot11.SC >> 4
 
-        # Extract Signal strength from RadioTap if present
+        # RadioTap dBm antenna signal
         signal_dbm = None
         if packet.haslayer(RadioTap):
             try:
                 rt = packet[RadioTap]
                 if hasattr(rt, "dBm_AntSignal") and rt.dBm_AntSignal is not None:
                     sig = int(rt.dBm_AntSignal)
-                    # Convert unsigned 8-bit signal to signed dBm
                     signal_dbm = sig - 256 if sig > 127 else sig
             except Exception:
                 signal_dbm = None
 
-        # Extract SSID, Channel, and Encryption
         ssid = None
         channel = None
         crypto = "OPEN"
@@ -86,7 +93,14 @@ class FrameParser:
         elif packet.haslayer(Dot11ProbeReq):
             ssid = cls._extract_ssid_from_elts(packet)
 
-        pkt_time = float(getattr(packet, "time", time.time()))
+        raw_t = getattr(packet, "time", None)
+        if raw_t is not None:
+            try:
+                pkt_time = float(raw_t)
+            except (ValueError, TypeError):
+                pkt_time = time.time()
+        else:
+            pkt_time = time.time()
 
         return ParsedFrame(
             timestamp=pkt_time,

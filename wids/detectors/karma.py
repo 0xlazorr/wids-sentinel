@@ -1,7 +1,4 @@
-"""
-Karma / MANA Rogue Access Point Detection Module.
-Detects rogue AP devices responding to arbitrary client probe requests.
-"""
+"""Karma / MANA rogue AP detector."""
 
 from typing import Dict, List, Set
 from collections import defaultdict
@@ -12,11 +9,6 @@ from wids.core.models import ParsedFrame, FrameSubtype, Alert, Severity
 
 
 class KarmaDetector(BaseDetector):
-    """
-    Detects Karma / MANA style attacks where an adversary's AP answers
-    probe requests for many arbitrary SSIDs.
-    """
-
     def __init__(self, config):
         super().__init__(config)
         self.enabled = config.enable_karma_detection
@@ -69,33 +61,31 @@ class KarmaDetector(BaseDetector):
             if frame.timestamp - last_alert >= self.cooldown_period:
                 self._alert_timestamps[bssid_lower] = frame.timestamp
 
-            ssid_sample = list(distinct_ssids)[:5]
-            desc = (
-                f"CRITICAL: Karma / MANA Rogue AP attack detected! "
-                f"Transmitter [{bssid_lower}] answered probe responses for {len(distinct_ssids)} "
-                f"different network names (SSIDs): {ssid_sample}."
-            )
-            mitigation = (
-                "Advise clients not to auto-connect to open Wi-Fi networks. "
-                "Disable Wi-Fi auto-probe on managed endpoints and locate the rogue radio device."
-            )
-
-            alerts.append(
-                Alert(
-                    rule_name="WIDS-RULE-005:KARMA_MANA_ATTACK",
-                    severity=Severity.CRITICAL,
-                    description=desc,
-                    source_mac=bssid_lower,
-                    bssid=bssid_lower,
-                    ssid="[MULTIPLE]",
-                    mitigation=mitigation,
-                    details={
-                        "bssid": bssid_lower,
-                        "claimed_ssids": list(distinct_ssids),
-                        "total_ssids_claimed": len(distinct_ssids),
-                    },
-                    timestamp=frame.timestamp,
+                ssid_sample = list(distinct_ssids)[:5]
+                desc = (
+                    f"Karma/MANA rogue AP: {bssid_lower} answered probe requests for "
+                    f"{len(distinct_ssids)} SSIDs: {', '.join(ssid_sample)}"
                 )
-            )
+                mitigation = (
+                    "Disable auto-connect to open Wi-Fi on client devices. Locate and isolate rogue radio."
+                )
+
+                alerts.append(
+                    Alert(
+                        rule_name="WIDS-RULE-005:KARMA_MANA_ATTACK",
+                        severity=Severity.CRITICAL,
+                        description=desc,
+                        source_mac=bssid_lower,
+                        bssid=bssid_lower,
+                        ssid="[MULTIPLE]",
+                        mitigation=mitigation,
+                        details={
+                            "bssid": bssid_lower,
+                            "claimed_ssids": list(distinct_ssids),
+                            "total_ssids_claimed": len(distinct_ssids),
+                        },
+                        timestamp=frame.timestamp,
+                    )
+                )
 
         return alerts

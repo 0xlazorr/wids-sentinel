@@ -1,8 +1,3 @@
-"""
-Core Intrusion Detection Engine.
-Coordinates packet parsing, rule evaluation, and alert dispatching.
-"""
-
 from typing import Dict, List, Optional
 import time
 
@@ -21,10 +16,6 @@ from wids.detectors.beacon_drift import BeaconDriftDetector
 
 
 class SentinelEngine:
-    """
-    Main orchestration engine for wids-sentinel.
-    """
-
     def __init__(self, config: SentinelConfig, alert_handler: Optional[AlertHandler] = None):
         self.config = config
         self.alert_handler = alert_handler or AlertHandler(output_file=config.alert_log_file)

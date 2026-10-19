@@ -50,20 +50,28 @@ class SentinelConfig:
 
         auth_aps: Dict[str, AuthorizedAP] = {}
         for item in data.get("authorized_aps", []):
-            bssid = item["bssid"].lower()
+            raw_bssid = item.get("bssid")
+            if not raw_bssid:
+                continue
+            bssid = str(raw_bssid).strip().lower()
             auth_aps[bssid] = AuthorizedAP(
-                ssid=item.get("ssid", ""),
+                ssid=item.get("ssid", "").strip(),
                 bssid=bssid,
                 channel=item.get("channel"),
                 expected_crypto=item.get("expected_crypto"),
             )
 
+        burst = max(1, int(data.get("deauth_threshold_burst", 8)))
+        window = max(0.1, float(data.get("deauth_window_seconds", 2.0)))
+        dis_burst = max(1, int(data.get("disassoc_threshold_burst", 8)))
+        dis_window = max(0.1, float(data.get("disassoc_window_seconds", 2.0)))
+
         return cls(
             authorized_aps=auth_aps,
-            deauth_threshold_burst=data.get("deauth_threshold_burst", 8),
-            deauth_window_seconds=data.get("deauth_window_seconds", 2.0),
-            disassoc_threshold_burst=data.get("disassoc_threshold_burst", 8),
-            disassoc_window_seconds=data.get("disassoc_window_seconds", 2.0),
+            deauth_threshold_burst=burst,
+            deauth_window_seconds=window,
+            disassoc_threshold_burst=dis_burst,
+            disassoc_window_seconds=dis_window,
             enable_deauth_detection=data.get("enable_deauth_detection", True),
             enable_disassoc_detection=data.get("enable_disassoc_detection", True),
             enable_evil_twin_detection=data.get("enable_evil_twin_detection", True),

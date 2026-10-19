@@ -1,12 +1,6 @@
-"""
-Alert Dispatcher and Persistence Handler.
-Handles logging to console, appending to alerts.json, and alert analytics.
-"""
-
 from typing import List, Optional
 import json
 import os
-import sys
 
 from rich.console import Console
 
@@ -15,8 +9,6 @@ from wids.alerts.formatters import AlertFormatter
 
 
 class AlertHandler:
-    """Dispatches alerts to active sinks (Console, JSON file)."""
-
     def __init__(self, output_file: Optional[str] = "alerts.json", console: Optional[Console] = None):
         self.output_file = output_file
         self.console = console or Console()

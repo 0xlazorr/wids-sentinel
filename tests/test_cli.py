@@ -53,3 +53,10 @@ def test_cli_execution_with_pcap():
             os.remove(pcap_path)
         if os.path.exists(json_path):
             os.remove(json_path)
+
+
+def test_cli_mismatched_auth_flags():
+    test_args = ["wids-sentinel", "-r", "test.pcap", "--auth-ssid", "TestNet"]
+    with patch("sys.argv", test_args):
+        exit_code = main()
+        assert exit_code == 1

@@ -60,7 +60,7 @@ class EvilTwinDetector(BaseDetector):
         bssid = frame.addr3 or frame.addr2
         ssid = frame.ssid
 
-        if not bssid or not ssid:
+        if not bssid or not ssid or ssid == "<Hidden SSID>":
             return alerts
 
         bssid_lower = bssid.lower()
@@ -72,7 +72,6 @@ class EvilTwinDetector(BaseDetector):
 
         # Prevent unbounded growth of observed APs
         if len(self.observed_aps) > 5000 and bssid_lower not in self.observed_aps:
-            # Prune APs older than 1 hour
             now = frame.timestamp
             stale_keys = [k for k, v in self.observed_aps.items() if now - v.last_seen > 3600]
             for sk in stale_keys:
@@ -97,18 +96,19 @@ class EvilTwinDetector(BaseDetector):
             if frame.channel is not None:
                 ap.channel = frame.channel
 
-        # --- Rule 1: Rogue AP broadcasting an Authorized SSID (Classic Evil Twin) ---
+        # --- Rule 1: Rogue AP broadcasting an Authorized SSID (Evil Twin) ---
         for auth_bssid, auth_profile in self.config.authorized_aps.items():
+            if not auth_profile.ssid or auth_profile.ssid == "<Hidden SSID>":
+                continue
             if auth_profile.ssid.lower() == ssid.lower() and bssid_lower != auth_bssid:
                 alert_key = f"evil_twin_{bssid_lower}_{ssid}"
                 if self._should_alert(alert_key, frame.timestamp):
                     desc = (
-                        f"CRITICAL: Rogue AP / Evil Twin detected! Unauthorized BSSID [{bssid_lower}] "
-                        f"is broadcasting authorized SSID '{ssid}'. Legitimate BSSID is [{auth_bssid}]."
+                        f"Evil Twin detected: Unauthorized BSSID [{bssid_lower}] "
+                        f"broadcasting '{ssid}' (legitimate BSSID: {auth_bssid})"
                     )
                     mitigation = (
-                        "Initiate wireless containment or locate and disable the rogue AP device. "
-                        "Warn users not to connect to open or untrusted networks matching this SSID."
+                        "Locate and isolate rogue transmitter. Verify client certificate pinning (802.1X/EAP-TLS)."
                     )
                     alerts.append(
                         Alert(
@@ -131,7 +131,6 @@ class EvilTwinDetector(BaseDetector):
                     )
 
         # --- Rule 2: Encryption Downgrade Attack ---
-        # If an authorized AP or known secure SSID is broadcasting without encryption (OPEN / WEP)
         for auth_bssid, auth_profile in self.config.authorized_aps.items():
             if auth_profile.ssid.lower() == ssid.lower() and auth_profile.expected_crypto:
                 expected = auth_profile.expected_crypto.upper()
@@ -140,12 +139,11 @@ class EvilTwinDetector(BaseDetector):
                     alert_key = f"downgrade_{bssid_lower}_{ssid}"
                     if self._should_alert(alert_key, frame.timestamp):
                         desc = (
-                            f"CRITICAL: Wireless Encryption Downgrade detected on SSID '{ssid}'! "
-                            f"Expected security suite [{expected}], but BSSID [{bssid_lower}] is broadcasting [{current}]."
+                            f"Encryption downgrade on '{ssid}': expected {expected}, "
+                            f"but {bssid_lower} is broadcasting {current}"
                         )
                         mitigation = (
-                            "Verify AP security configuration. Ensure captive portals or fake APs are not attempting "
-                            "to harvest unencrypted credentials or MITM user traffic."
+                            "Check AP security configuration. Investigate potential rogue AP or rogue captive portal."
                         )
                         alerts.append(
                             Alert(
@@ -172,11 +170,11 @@ class EvilTwinDetector(BaseDetector):
                 alert_key = f"channel_drift_{bssid_lower}_{frame.channel}"
                 if self._should_alert(alert_key, frame.timestamp):
                     desc = (
-                        f"WARNING: Channel anomaly on authorized AP [{bssid_lower}]. "
-                        f"Expected channel {authorized_ap.channel}, but beacon detected on channel {frame.channel}."
+                        f"Channel anomaly on {bssid_lower}: expected channel {authorized_ap.channel}, "
+                        f"seen on channel {frame.channel}"
                     )
                     mitigation = (
-                        "Investigate potential rogue device spoofing the authorized BSSID on an adjacent channel."
+                        "Verify spectrum allocations. Check for rogue device spoofing the BSSID on an adjacent channel."
                     )
                     alerts.append(
                         Alert(

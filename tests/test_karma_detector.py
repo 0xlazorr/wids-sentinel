@@ -33,3 +33,8 @@ def test_karma_multiple_ssids_triggers_alert(base_config):
     assert alert.severity == Severity.CRITICAL
     assert alert.bssid == rogue_bssid
     assert alert.details["total_ssids_claimed"] >= 3
+
+    # Additional probe response within cooldown period should NOT alert
+    raw_extra = make_probe_resp("Hotel_Pool_WiFi", rogue_bssid, "11:22:33:44:55:66")
+    extra_alerts = detector.process(FrameParser.parse(raw_extra))
+    assert len(extra_alerts) == 0
