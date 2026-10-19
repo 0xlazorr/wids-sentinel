@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Real-Time 802.11 Wireless Intrusion Detection System (WIDS)"
 readme = "README.md"
 authors = [{ name = "lazorr", email = "lazarusebi111@gmail.com" }]
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "scapy>=2.5.0",
@@ -23,6 +23,11 @@ dev = [
 
 [project.scripts]
 wids-sentinel = "wids.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["wids*"]
+exclude = ["data*", "scripts*", "tests*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
