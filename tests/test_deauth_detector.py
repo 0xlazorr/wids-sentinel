@@ -35,6 +35,7 @@ def test_deauth_burst_triggers_alert(base_config):
     assert alert.severity in (Severity.CRITICAL, Severity.HIGH)
     assert alert.bssid == "00:11:22:33:44:55"
     assert alert.target_mac == "aa:bb:cc:dd:ee:ff"
+    assert alert.ssid == "Corp_Secure_WiFi"
 
 
 def test_broadcast_deauth_severity_critical(base_config):

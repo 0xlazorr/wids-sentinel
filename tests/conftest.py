@@ -8,14 +8,12 @@ from scapy.layers.dot11 import (
     RadioTap,
     Dot11,
     Dot11Beacon,
-    Dot11ProbeReq,
     Dot11ProbeResp,
     Dot11Deauth,
-    Dot11Disas,
     Dot11Elt,
 )
 
-from wids.config import SentinelConfig, AuthorizedAP
+from wids.config import SentinelConfig
 
 
 @pytest.fixture

@@ -10,8 +10,6 @@ from scapy.layers.dot11 import (
     Dot11Beacon,
     Dot11ProbeReq,
     Dot11ProbeResp,
-    Dot11Deauth,
-    Dot11Disas,
     Dot11Elt,
     RadioTap,
 )
@@ -41,11 +39,14 @@ class FrameParser:
         if not addr:
             return None
         if isinstance(addr, (bytes, bytearray)):
-            try:
+            if len(addr) == 6:
                 return ":".join(f"{b:02x}" for b in addr)
+            try:
+                addr = addr.decode("utf-8", errors="ignore")
             except Exception:
                 return None
-        return str(addr).strip().lower()
+        clean = str(addr).strip().lower()
+        return clean if clean else None
 
     @classmethod
     def parse(cls, packet) -> Optional[ParsedFrame]:
@@ -71,7 +72,10 @@ class FrameParser:
         # Sequence control (high 12 bits)
         seq_num = None
         if hasattr(dot11, "SC") and dot11.SC is not None:
-            seq_num = dot11.SC >> 4
+            try:
+                seq_num = int(dot11.SC) >> 4
+            except (TypeError, ValueError):
+                seq_num = None
 
         # RadioTap dBm antenna signal
         signal_dbm = None
@@ -176,7 +180,16 @@ class FrameParser:
                 except Exception:
                     ssid = None
 
-            elif elt.ID == 3:  # DS Parameter Set (Channel)
+            elif elt.ID == 3:  # DS Parameter Set (Channel for 2.4 GHz)
+                try:
+                    if elt.info:
+                        raw_ch = int(elt.info[0]) if isinstance(elt.info, (bytes, bytearray)) else int(elt.info)
+                        if 1 <= raw_ch <= 196:
+                            channel = raw_ch
+                except Exception:
+                    pass
+
+            elif elt.ID == 61:  # HT Operation (Primary Channel for 5 GHz / 802.11n/ac)
                 try:
                     if elt.info:
                         raw_ch = int(elt.info[0]) if isinstance(elt.info, (bytes, bytearray)) else int(elt.info)
@@ -204,6 +217,29 @@ class FrameParser:
                     pass
 
             elt = elt.payload.getlayer(Dot11Elt)
+
+        # Fallback channel derivation from RadioTap frequency if not found in 802.11 elements
+        if channel is None and packet.haslayer(RadioTap):
+            try:
+                rt = packet[RadioTap]
+                freq = (
+                    getattr(rt, "ChannelFrequency", None)
+                    or getattr(rt, "ChannelPlusFrequency", None)
+                    or (rt.fields.get("ChannelFrequency") if hasattr(rt, "fields") else None)
+                    or (rt.fields.get("ChannelPlusFrequency") if hasattr(rt, "fields") else None)
+                )
+                if freq is not None:
+                    freq_int = int(freq)
+                    if 2412 <= freq_int <= 2472:
+                        channel = (freq_int - 2407) // 5
+                    elif freq_int == 2484:
+                        channel = 14
+                    elif 5180 <= freq_int <= 5885:
+                        channel = (freq_int - 5000) // 5
+                    elif 5955 <= freq_int <= 7115:
+                        channel = (freq_int - 5950) // 5
+            except Exception:
+                pass
 
         # Classify encryption type
         if is_wpa3:

@@ -5,7 +5,6 @@ Identifies unauthorized APs broadcasting legitimate SSIDs or spoofing legitimate
 
 from typing import Dict, List, Set
 from collections import defaultdict
-import time
 
 from wids.detectors.base import BaseDetector
 from wids.core.models import ParsedFrame, FrameSubtype, Alert, Severity, AccessPoint
@@ -64,6 +63,13 @@ class EvilTwinDetector(BaseDetector):
             return alerts
 
         bssid_lower = bssid.lower()
+
+        # Prevent unbounded growth of tracking collections
+        if len(self.ssid_to_bssids) > 2000:
+            self.ssid_to_bssids.clear()
+        if len(self._alert_timestamps) > 2000:
+            self._alert_timestamps.clear()
+
         self.ssid_to_bssids[ssid].add(bssid_lower)
 
         # Check against authorized AP profiles
@@ -97,38 +103,41 @@ class EvilTwinDetector(BaseDetector):
                 ap.channel = frame.channel
 
         # --- Rule 1: Rogue AP broadcasting an Authorized SSID (Evil Twin) ---
-        for auth_bssid, auth_profile in self.config.authorized_aps.items():
-            if not auth_profile.ssid or auth_profile.ssid == "<Hidden SSID>":
-                continue
-            if auth_profile.ssid.lower() == ssid.lower() and bssid_lower != auth_bssid:
-                alert_key = f"evil_twin_{bssid_lower}_{ssid}"
-                if self._should_alert(alert_key, frame.timestamp):
-                    desc = (
-                        f"Evil Twin detected: Unauthorized BSSID [{bssid_lower}] "
-                        f"broadcasting '{ssid}' (legitimate BSSID: {auth_bssid})"
-                    )
-                    mitigation = (
-                        "Locate and isolate rogue transmitter. Verify client certificate pinning (802.1X/EAP-TLS)."
-                    )
-                    alerts.append(
-                        Alert(
-                            rule_name="WIDS-RULE-002:EVIL_TWIN_ROGUE_AP",
-                            severity=Severity.CRITICAL,
-                            description=desc,
-                            source_mac=bssid_lower,
-                            bssid=bssid_lower,
-                            ssid=ssid,
-                            mitigation=mitigation,
-                            details={
-                                "rogue_bssid": bssid_lower,
-                                "authorized_bssid": auth_bssid,
-                                "ssid": ssid,
-                                "rogue_crypto": frame.crypto_type,
-                                "channel": frame.channel,
-                            },
-                            timestamp=frame.timestamp,
+        # An authorized AP is never an Evil Twin of another authorized AP
+        if not is_known_authorized:
+            for auth_bssid, auth_profile in self.config.authorized_aps.items():
+                if not auth_profile.ssid or auth_profile.ssid == "<Hidden SSID>":
+                    continue
+                if auth_profile.ssid.lower() == ssid.lower():
+                    alert_key = f"evil_twin_{bssid_lower}_{ssid}"
+                    if self._should_alert(alert_key, frame.timestamp):
+                        desc = (
+                            f"Evil Twin detected: Unauthorized BSSID [{bssid_lower}] "
+                            f"broadcasting '{ssid}' (legitimate BSSID: {auth_bssid})"
                         )
-                    )
+                        mitigation = (
+                            "Locate and isolate rogue transmitter. Verify client certificate pinning (802.1X/EAP-TLS)."
+                        )
+                        alerts.append(
+                            Alert(
+                                rule_name="WIDS-RULE-002:EVIL_TWIN_ROGUE_AP",
+                                severity=Severity.CRITICAL,
+                                description=desc,
+                                source_mac=bssid_lower,
+                                bssid=bssid_lower,
+                                ssid=ssid,
+                                mitigation=mitigation,
+                                details={
+                                    "rogue_bssid": bssid_lower,
+                                    "authorized_bssid": auth_bssid,
+                                    "ssid": ssid,
+                                    "rogue_crypto": frame.crypto_type,
+                                    "channel": frame.channel,
+                                },
+                                timestamp=frame.timestamp,
+                            )
+                        )
+                        break
 
         # --- Rule 2: Encryption Downgrade Attack ---
         for auth_bssid, auth_profile in self.config.authorized_aps.items():
@@ -163,6 +172,7 @@ class EvilTwinDetector(BaseDetector):
                                 timestamp=frame.timestamp,
                             )
                         )
+                        break
 
         # --- Rule 3: Channel Anomaly on Authorized AP ---
         if is_known_authorized and authorized_ap.channel is not None and frame.channel is not None:

@@ -2,7 +2,6 @@
 
 from collections import defaultdict, deque
 from typing import Dict, List, Tuple
-import time
 
 from wids.detectors.base import BaseDetector
 from wids.core.models import ParsedFrame, FrameSubtype, Alert, Severity
@@ -88,6 +87,12 @@ class DeauthFloodDetector(BaseDetector):
                     "Enforce 802.11w (PMF) on AP and clients to reject unauthenticated management frames."
                 )
 
+                resolved_ssid = frame.ssid
+                if not resolved_ssid and bssid != "unknown":
+                    auth_entry = self.config.authorized_aps.get(bssid.lower())
+                    if auth_entry:
+                        resolved_ssid = auth_entry.ssid
+
                 alert = Alert(
                     rule_name="WIDS-RULE-001:DEAUTH_FLOOD",
                     severity=severity,
@@ -95,7 +100,7 @@ class DeauthFloodDetector(BaseDetector):
                     source_mac=src,
                     target_mac=dst,
                     bssid=bssid,
-                    ssid=frame.ssid,
+                    ssid=resolved_ssid,
                     mitigation=mitigation,
                     details={
                         "frame_type": frame_type_str,

@@ -1,7 +1,6 @@
 """Beacon drift and sequence anomaly detector."""
 
-from typing import Dict, List, Optional
-import time
+from typing import Dict, List
 
 from wids.detectors.base import BaseDetector
 from wids.core.models import ParsedFrame, FrameSubtype, Alert, Severity
@@ -38,6 +37,15 @@ class BeaconDriftDetector(BaseDetector):
         bssid_lower = bssid.lower()
         curr_seq = frame.sequence_num
         curr_time = frame.timestamp
+
+        # Prevent unbounded memory usage
+        if len(self._last_seq) > 2000 and bssid_lower not in self._last_seq:
+            old_keys = list(self._last_seq.keys())[:500]
+            for ok in old_keys:
+                self._last_seq.pop(ok, None)
+                self._last_time.pop(ok, None)
+                self._cooldown.pop(f"seq_{ok}", None)
+                self._cooldown.pop(f"multicast_{ok}", None)
 
         # Check for invalid Multicast bit in BSSID (bit 0 of octet 0 must be 0 for unicast BSSID)
         try:

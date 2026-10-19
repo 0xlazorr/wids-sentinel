@@ -38,3 +38,20 @@ def test_karma_multiple_ssids_triggers_alert(base_config):
     raw_extra = make_probe_resp("Hotel_Pool_WiFi", rogue_bssid, "11:22:33:44:55:66")
     extra_alerts = detector.process(FrameParser.parse(raw_extra))
     assert len(extra_alerts) == 0
+
+
+def test_karma_hidden_ssid_ignored(base_config):
+    detector = KarmaDetector(base_config)
+    bssid = "de:ad:be:ef:00:02"
+
+    # 2 legitimate probe responses + 1 hidden SSID probe response
+    raw1 = make_probe_resp("Network_1", bssid, "11:22:33:44:55:66")
+    raw2 = make_probe_resp("Network_2", bssid, "11:22:33:44:55:66")
+    raw_hidden = make_probe_resp("", bssid, "11:22:33:44:55:66")
+
+    detector.process(FrameParser.parse(raw1))
+    detector.process(FrameParser.parse(raw2))
+    alerts = detector.process(FrameParser.parse(raw_hidden))
+
+    # Should NOT trigger since threshold is 3 distinct named SSIDs
+    assert len(alerts) == 0

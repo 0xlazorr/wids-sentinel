@@ -36,18 +36,24 @@ class SentinelEngine:
         # Engine statistics
         self.frames_inspected = 0
         self.start_time: float = 0.0
+        self.current_source: Optional[PacketSource] = None
 
     def start_offline(self, pcap_path: str, max_count: int = 0) -> None:
         """Run engine against an offline PCAP file."""
         self.start_time = time.time()
-        source = PacketSource(pcap_file=pcap_path, packet_callback=self.process_frame)
-        source.start(count=max_count)
+        self.current_source = PacketSource(pcap_file=pcap_path, packet_callback=self.process_frame)
+        self.current_source.start(count=max_count)
 
     def start_live(self, interface: str, max_count: int = 0) -> None:
         """Run engine against a live monitor-mode wireless interface."""
         self.start_time = time.time()
-        source = PacketSource(interface=interface, packet_callback=self.process_frame)
-        source.start(count=max_count)
+        self.current_source = PacketSource(interface=interface, packet_callback=self.process_frame)
+        self.current_source.start(count=max_count)
+
+    def stop(self) -> None:
+        """Stop packet capture cleanly."""
+        if self.current_source:
+            self.current_source.stop()
 
     def process_frame(self, frame: ParsedFrame) -> List[Alert]:
         """Core frame processing logic invoked for each captured packet."""

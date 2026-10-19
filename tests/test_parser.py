@@ -4,7 +4,7 @@ Tests for 802.11 FrameParser.
 
 from wids.core.parser import FrameParser
 from wids.core.models import FrameSubtype
-from tests.conftest import make_beacon, make_deauth, make_probe_resp
+from tests.conftest import make_beacon, make_deauth
 
 
 def test_parse_beacon():
@@ -65,4 +65,35 @@ def test_normalize_mac():
     assert FrameParser._normalize_mac("00:11:22:33:44:55") == "00:11:22:33:44:55"
     assert FrameParser._normalize_mac("AA:BB:CC:DD:EE:FF") == "aa:bb:cc:dd:ee:ff"
     assert FrameParser._normalize_mac(b"\xaa\xbb\xcc\xdd\xee\xff") == "aa:bb:cc:dd:ee:ff"
+    assert FrameParser._normalize_mac(b"00:11:22:33:44:55") == "00:11:22:33:44:55"
     assert FrameParser._normalize_mac(None) is None
+
+
+def test_parse_5ghz_ht_channel():
+    from scapy.layers.dot11 import RadioTap, Dot11, Dot11Beacon, Dot11Elt
+    # 5GHz beacon with HT Operation element (ID 61), channel 36
+    pkt = (
+        RadioTap()
+        / Dot11(addr1="ff:ff:ff:ff:ff:ff", addr2="00:11:22:33:44:55", addr3="00:11:22:33:44:55")
+        / Dot11Beacon()
+        / Dot11Elt(ID=0, info=b"5G_Network")
+        / Dot11Elt(ID=61, info=bytes([36]) + b"\x00" * 21)
+    )
+    parsed = FrameParser.parse(pkt)
+    assert parsed is not None
+    assert parsed.channel == 36
+
+
+def test_parse_radiotap_frequency_channel():
+    from scapy.layers.dot11 import RadioTap, Dot11, Dot11Beacon, Dot11Elt
+    # Beacon without DS set, but with RadioTap ChannelFrequency 5180 (Channel 36)
+    rt = RadioTap(ChannelFrequency=5180)
+    pkt = (
+        rt
+        / Dot11(addr1="ff:ff:ff:ff:ff:ff", addr2="00:11:22:33:44:55", addr3="00:11:22:33:44:55")
+        / Dot11Beacon()
+        / Dot11Elt(ID=0, info=b"5G_Freq_Net")
+    )
+    parsed = FrameParser.parse(pkt)
+    assert parsed is not None
+    assert parsed.channel == 36

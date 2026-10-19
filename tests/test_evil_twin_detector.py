@@ -75,3 +75,21 @@ def test_hidden_ssid_no_evil_twin_alert(base_config):
 
     assert len(alerts1) == 0
     assert len(alerts2) == 0
+
+
+def test_multiple_authorized_aps_same_ssid_no_false_positive(base_config):
+    # Add a second authorized AP sharing the same SSID "Corp_Secure_WiFi"
+    base_config.add_authorized_ap(
+        ssid="Corp_Secure_WiFi",
+        bssid="00:11:22:33:44:66",
+        channel=1,
+        crypto="WPA2",
+    )
+    detector = EvilTwinDetector(base_config)
+
+    # Beacon from the second authorized AP
+    raw = make_beacon("Corp_Secure_WiFi", "00:11:22:33:44:66", channel=1, crypto="WPA2")
+    alerts = detector.process(FrameParser.parse(raw))
+
+    # Must NOT trigger an Evil Twin alert on another authorized AP
+    assert len(alerts) == 0

@@ -3,7 +3,7 @@ Configuration management for wids-sentinel.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 import json
 import os
 
@@ -83,9 +83,9 @@ class SentinelConfig:
 
     def add_authorized_ap(self, ssid: str, bssid: str, channel: Optional[int] = None, crypto: Optional[str] = None):
         """Register an authorized AP in-memory."""
-        normalized_bssid = bssid.lower()
+        normalized_bssid = bssid.strip().lower()
         self.authorized_aps[normalized_bssid] = AuthorizedAP(
-            ssid=ssid,
+            ssid=ssid.strip(),
             bssid=normalized_bssid,
             channel=channel,
             expected_crypto=crypto,

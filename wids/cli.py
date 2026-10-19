@@ -95,12 +95,14 @@ def main() -> int:
             engine.start_live(args.interface, max_count=args.count)
     except KeyboardInterrupt:
         console.print("\n[yellow]Stopping capture...[/yellow]")
+        engine.stop()
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
         return 1
     finally:
-        console.print("\n")
-        engine.print_summary()
+        if engine.frames_inspected > 0 or engine.start_time > 0:
+            console.print("\n")
+            engine.print_summary()
 
     return 0
 

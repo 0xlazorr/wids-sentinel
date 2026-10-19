@@ -2,7 +2,6 @@
 
 from typing import Dict, List, Set
 from collections import defaultdict
-import time
 
 from wids.detectors.base import BaseDetector
 from wids.core.models import ParsedFrame, FrameSubtype, Alert, Severity
@@ -40,7 +39,7 @@ class KarmaDetector(BaseDetector):
         bssid = frame.addr3 or frame.addr2
         ssid = frame.ssid
 
-        if not bssid or not ssid or ssid.strip() == "":
+        if not bssid or not ssid or ssid.strip() == "" or ssid == "<Hidden SSID>":
             return alerts
 
         bssid_lower = bssid.lower()
@@ -51,6 +50,9 @@ class KarmaDetector(BaseDetector):
             keys_to_drop = list(self._bssid_ssids.keys())[:200]
             for k in keys_to_drop:
                 del self._bssid_ssids[k]
+
+        if len(self._alert_timestamps) > 1000:
+            self._alert_timestamps.clear()
 
         self._bssid_ssids[bssid_lower].add(ssid)
 
