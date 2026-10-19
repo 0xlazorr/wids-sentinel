@@ -1,0 +1,90 @@
+"""
+Karma / MANA Rogue Access Point Detection Module.
+Detects rogue AP devices responding to arbitrary client probe requests.
+"""
+
+from typing import Dict, List, Set
+from collections import defaultdict
+import time
+
+from wids.detectors.base import BaseDetector
+from wids.core.models import ParsedFrame, FrameSubtype, Alert, Severity
+
+
+class KarmaDetector(BaseDetector):
+    """
+    Detects Karma / MANA style attacks where an adversary's AP answers
+    probe requests for many arbitrary SSIDs.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.enabled = config.enable_karma_detection
+        self.ssid_threshold = 3  # Alert if single BSSID claims >= 3 distinct SSIDs in probe responses
+
+        # BSSID -> Set of SSIDs claimed in Probe Responses
+        self._bssid_ssids: Dict[str, Set[str]] = defaultdict(set)
+        self._alerted_bssid: Set[str] = set()
+
+    @property
+    def name(self) -> str:
+        return "KarmaManaDetector"
+
+    def reset(self) -> None:
+        self._bssid_ssids.clear()
+        self._alerted_bssid.clear()
+
+    def process(self, frame: ParsedFrame) -> List[Alert]:
+        alerts: List[Alert] = []
+
+        if not self.enabled:
+            return alerts
+
+        # Only inspect Probe Response frames
+        if frame.subtype != FrameSubtype.PROBE_RESP:
+            return alerts
+
+        bssid = frame.addr3 or frame.addr2
+        ssid = frame.ssid
+
+        if not bssid or not ssid or ssid.strip() == "":
+            return alerts
+
+        bssid_lower = bssid.lower()
+        self._bssid_ssids[bssid_lower].add(ssid)
+
+        distinct_ssids = self._bssid_ssids[bssid_lower]
+
+        if len(distinct_ssids) >= self.ssid_threshold and bssid_lower not in self._alerted_bssid:
+            self._alerted_bssid.add(bssid_lower)
+
+            ssid_sample = list(distinct_ssids)[:5]
+            desc = (
+                f"CRITICAL: Karma / MANA Rogue AP attack detected! "
+                f"Transmitter [{bssid_lower}] answered probe responses for {len(distinct_ssids)} "
+                f"different network names (SSIDs): {ssid_sample}."
+            )
+            mitigation = (
+                "Advise clients not to auto-connect to open Wi-Fi networks. "
+                "Disable Wi-Fi auto-probe on managed endpoints and locate the rogue radio device."
+            )
+
+            alerts.append(
+                Alert(
+                    rule_name="WIDS-RULE-005:KARMA_MANA_ATTACK",
+                    severity=Severity.CRITICAL,
+                    description=desc,
+                    source_mac=bssid_lower,
+                    bssid=bssid_lower,
+                    ssid="[MULTIPLE]",
+                    mitigation=mitigation,
+                    details={
+                        "bssid": bssid_lower,
+                        "claimed_ssids": list(distinct_ssids),
+                        "total_ssids_claimed": len(distinct_ssids),
+                    },
+                    timestamp=frame.timestamp,
+                )
+            )
+
+        return alerts

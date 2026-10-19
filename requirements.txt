@@ -1,0 +1,4 @@
+scapy>=2.5.0
+rich>=13.0.0
+pytest>=8.0.0
+pytest-cov>=5.0.0

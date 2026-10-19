@@ -1,0 +1,26 @@
+{
+  "authorized_aps": [
+    {
+      "ssid": "Corp_Secure_WiFi",
+      "bssid": "00:11:22:33:44:55",
+      "channel": 6,
+      "expected_crypto": "WPA2"
+    },
+    {
+      "ssid": "Engineering_5G",
+      "bssid": "aa:bb:cc:dd:ee:01",
+      "channel": 36,
+      "expected_crypto": "WPA3"
+    }
+  ],
+  "deauth_threshold_burst": 8,
+  "deauth_window_seconds": 2.0,
+  "disassoc_threshold_burst": 8,
+  "disassoc_window_seconds": 2.0,
+  "enable_deauth_detection": true,
+  "enable_evil_twin_detection": true,
+  "enable_karma_detection": true,
+  "enable_beacon_drift_detection": true,
+  "alert_log_file": "alerts.json",
+  "verbose": false
+}
