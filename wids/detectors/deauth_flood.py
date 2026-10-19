@@ -58,6 +58,23 @@ class DeauthFloodDetector(BaseDetector):
         current_time = frame.timestamp
 
         key = (bssid, src, dst, frame_type_str)
+
+        # Periodic cleanup of expired keys to prevent memory leak on high-traffic networks
+        if len(self._history) > 1000:
+            stale_keys = [
+                k for k, win in self._history.items()
+                if not win or (current_time - win[-1] > self.window_seconds)
+            ]
+            for sk in stale_keys:
+                del self._history[sk]
+
+            stale_alerts = [
+                k for k, t in self._last_alert_time.items()
+                if (current_time - t > self.cooldown_period * 2)
+            ]
+            for sa in stale_alerts:
+                del self._last_alert_time[sa]
+
         window = self._history[key]
 
         # Prune expired timestamps from the sliding window

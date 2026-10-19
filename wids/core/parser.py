@@ -67,9 +67,14 @@ class FrameParser:
         # Extract Signal strength from RadioTap if present
         signal_dbm = None
         if packet.haslayer(RadioTap):
-            rt = packet[RadioTap]
-            if hasattr(rt, "dBm_AntSignal") and rt.dBm_AntSignal is not None:
-                signal_dbm = rt.dBm_AntSignal
+            try:
+                rt = packet[RadioTap]
+                if hasattr(rt, "dBm_AntSignal") and rt.dBm_AntSignal is not None:
+                    sig = int(rt.dBm_AntSignal)
+                    # Convert unsigned 8-bit signal to signed dBm
+                    signal_dbm = sig - 256 if sig > 127 else sig
+            except Exception:
+                signal_dbm = None
 
         # Extract SSID, Channel, and Encryption
         ssid = None
@@ -99,16 +104,30 @@ class FrameParser:
         )
 
     @classmethod
+    def _sanitize_ssid(cls, raw: str) -> Optional[str]:
+        """Strip null bytes and non-printable characters from SSID."""
+        if raw is None:
+            return None
+        cleaned = "".join(c for c in raw if c.isprintable()).replace("\x00", "").strip()
+        if not cleaned:
+            return "<Hidden SSID>"
+        return cleaned
+
+    @classmethod
     def _extract_ssid_from_elts(cls, packet) -> Optional[str]:
         """Extract SSID from Information Elements (ID 0)."""
         elt = packet.getlayer(Dot11Elt)
-        while elt:
+        depth = 0
+        while elt and depth < 64:
+            depth += 1
             if elt.ID == 0:  # SSID parameter set
                 try:
                     raw_info = elt.info
                     if isinstance(raw_info, bytes):
-                        return raw_info.decode("utf-8", errors="replace")
-                    return str(raw_info)
+                        raw_str = raw_info.decode("utf-8", errors="replace")
+                    else:
+                        raw_str = str(raw_info)
+                    return cls._sanitize_ssid(raw_str)
                 except Exception:
                     return None
             elt = elt.payload.getlayer(Dot11Elt)
@@ -129,21 +148,26 @@ class FrameParser:
             has_privacy = bool(dot11.cap & 0x0010 or "privacy" in str(dot11.cap).lower())
 
         elt = packet.getlayer(Dot11Elt)
-        while elt:
+        depth = 0
+        while elt and depth < 64:
+            depth += 1
             if elt.ID == 0:  # SSID
                 try:
                     raw_info = elt.info
                     if isinstance(raw_info, bytes):
-                        ssid = raw_info.decode("utf-8", errors="replace")
+                        raw_str = raw_info.decode("utf-8", errors="replace")
                     else:
-                        ssid = str(raw_info)
+                        raw_str = str(raw_info)
+                    ssid = cls._sanitize_ssid(raw_str)
                 except Exception:
                     ssid = None
 
             elif elt.ID == 3:  # DS Parameter Set (Channel)
                 try:
                     if elt.info:
-                        channel = int(elt.info[0]) if isinstance(elt.info, (bytes, bytearray)) else int(elt.info)
+                        raw_ch = int(elt.info[0]) if isinstance(elt.info, (bytes, bytearray)) else int(elt.info)
+                        if 1 <= raw_ch <= 196:
+                            channel = raw_ch
                 except Exception:
                     pass
 

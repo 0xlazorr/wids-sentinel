@@ -37,6 +37,9 @@ class AlertHandler:
     def _write_json_alert(self, alert: Alert) -> None:
         """Append an alert record to the JSON file."""
         try:
+            dir_name = os.path.dirname(self.output_file)
+            if dir_name:
+                os.makedirs(os.path.abspath(dir_name), exist_ok=True)
             with open(self.output_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(alert.to_dict()) + "\n")
         except Exception as e:

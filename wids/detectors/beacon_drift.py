@@ -79,12 +79,20 @@ class BeaconDriftDetector(BaseDetector):
             prev_seq = self._last_seq[bssid_lower]
             prev_time = self._last_time.get(bssid_lower, curr_time)
 
-            # Sequence numbers are 12-bit (0 - 4095)
-            expected_diff = (curr_seq - prev_seq) % 4096
             time_diff = curr_time - prev_time
 
-            # If frames arrive closely (< 0.5s) but sequence jumps by > 200
-            if time_diff < 0.5 and expected_diff > 200:
+            # Sequence numbers are 12-bit (0 - 4095)
+            # Calculate forward distance with wrap-around
+            if curr_seq >= prev_seq:
+                forward_diff = curr_seq - prev_seq
+                is_backward_reorder = False
+            else:
+                forward_diff = (curr_seq + 4096) - prev_seq
+                # If the previous sequence was only slightly ahead (<= 20), this is normal out-of-order jitter/retransmission
+                is_backward_reorder = (prev_seq - curr_seq) <= 20
+
+            # If frames arrive closely (< 0.5s) and sequence jumps significantly forward (> 200 and < 3800)
+            if time_diff < 0.5 and (200 < forward_diff < 3800) and not is_backward_reorder:
                 if curr_time - self._cooldown.get(f"seq_{bssid_lower}", 0.0) > 10.0:
                     self._cooldown[f"seq_{bssid_lower}"] = curr_time
                     alerts.append(
@@ -93,7 +101,7 @@ class BeaconDriftDetector(BaseDetector):
                             severity=Severity.MEDIUM,
                             description=(
                                 f"Abrupt sequence number jump on BSSID [{bssid_lower}]. "
-                                f"Jumped from {prev_seq} to {curr_seq} in {time_diff:.2f}s (delta: {expected_diff}). "
+                                f"Jumped from {prev_seq} to {curr_seq} in {time_diff:.2f}s (delta: {forward_diff}). "
                                 f"May indicate beacon injection or multiple transmitters."
                             ),
                             source_mac=bssid_lower,
@@ -104,7 +112,7 @@ class BeaconDriftDetector(BaseDetector):
                                 "bssid": bssid_lower,
                                 "previous_seq": prev_seq,
                                 "current_seq": curr_seq,
-                                "delta": expected_diff,
+                                "delta": forward_diff,
                             },
                             timestamp=curr_time,
                         )

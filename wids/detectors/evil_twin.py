@@ -27,7 +27,8 @@ class EvilTwinDetector(BaseDetector):
         self.ssid_to_bssids: Dict[str, Set[str]] = defaultdict(set)
 
         # Alert cooldown to prevent alert spamming for continuous beacons
-        self._alerted_rogues: Set[str] = set()
+        self._alert_timestamps: Dict[str, float] = {}
+        self.cooldown_period = 60.0  # seconds between repeated alerts for the same rogue entity
 
     @property
     def name(self) -> str:
@@ -36,7 +37,15 @@ class EvilTwinDetector(BaseDetector):
     def reset(self) -> None:
         self.observed_aps.clear()
         self.ssid_to_bssids.clear()
-        self._alerted_rogues.clear()
+        self._alert_timestamps.clear()
+
+    def _should_alert(self, key: str, timestamp: float) -> bool:
+        """Check if an alert should fire based on cooldown."""
+        last_time = self._alert_timestamps.get(key, 0.0)
+        if timestamp - last_time >= self.cooldown_period:
+            self._alert_timestamps[key] = timestamp
+            return True
+        return False
 
     def process(self, frame: ParsedFrame) -> List[Alert]:
         alerts: List[Alert] = []
@@ -61,6 +70,14 @@ class EvilTwinDetector(BaseDetector):
         authorized_ap = self.config.authorized_aps.get(bssid_lower)
         is_known_authorized = authorized_ap is not None
 
+        # Prevent unbounded growth of observed APs
+        if len(self.observed_aps) > 5000 and bssid_lower not in self.observed_aps:
+            # Prune APs older than 1 hour
+            now = frame.timestamp
+            stale_keys = [k for k, v in self.observed_aps.items() if now - v.last_seen > 3600]
+            for sk in stale_keys:
+                del self.observed_aps[sk]
+
         # Record / Update observed AP
         if bssid_lower not in self.observed_aps:
             ap = AccessPoint(
@@ -84,15 +101,13 @@ class EvilTwinDetector(BaseDetector):
         for auth_bssid, auth_profile in self.config.authorized_aps.items():
             if auth_profile.ssid.lower() == ssid.lower() and bssid_lower != auth_bssid:
                 alert_key = f"evil_twin_{bssid_lower}_{ssid}"
-                if alert_key not in self._alerted_rogues:
-                    self._alerted_rogues.add(alert_key)
-
+                if self._should_alert(alert_key, frame.timestamp):
                     desc = (
                         f"CRITICAL: Rogue AP / Evil Twin detected! Unauthorized BSSID [{bssid_lower}] "
                         f"is broadcasting authorized SSID '{ssid}'. Legitimate BSSID is [{auth_bssid}]."
                     )
                     mitigation = (
-                        "Initiate wireless containment or locate and disable the rogue rogue AP device. "
+                        "Initiate wireless containment or locate and disable the rogue AP device. "
                         "Warn users not to connect to open or untrusted networks matching this SSID."
                     )
                     alerts.append(
@@ -123,9 +138,7 @@ class EvilTwinDetector(BaseDetector):
                 current = frame.crypto_type.upper()
                 if expected in ("WPA2", "WPA3") and current in ("OPEN", "WEP"):
                     alert_key = f"downgrade_{bssid_lower}_{ssid}"
-                    if alert_key not in self._alerted_rogues:
-                        self._alerted_rogues.add(alert_key)
-
+                    if self._should_alert(alert_key, frame.timestamp):
                         desc = (
                             f"CRITICAL: Wireless Encryption Downgrade detected on SSID '{ssid}'! "
                             f"Expected security suite [{expected}], but BSSID [{bssid_lower}] is broadcasting [{current}]."
@@ -157,9 +170,7 @@ class EvilTwinDetector(BaseDetector):
         if is_known_authorized and authorized_ap.channel is not None and frame.channel is not None:
             if authorized_ap.channel != frame.channel:
                 alert_key = f"channel_drift_{bssid_lower}_{frame.channel}"
-                if alert_key not in self._alerted_rogues:
-                    self._alerted_rogues.add(alert_key)
-
+                if self._should_alert(alert_key, frame.timestamp):
                     desc = (
                         f"WARNING: Channel anomaly on authorized AP [{bssid_lower}]. "
                         f"Expected channel {authorized_ap.channel}, but beacon detected on channel {frame.channel}."

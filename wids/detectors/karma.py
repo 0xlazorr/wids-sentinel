@@ -24,7 +24,8 @@ class KarmaDetector(BaseDetector):
 
         # BSSID -> Set of SSIDs claimed in Probe Responses
         self._bssid_ssids: Dict[str, Set[str]] = defaultdict(set)
-        self._alerted_bssid: Set[str] = set()
+        self._alert_timestamps: Dict[str, float] = {}
+        self.cooldown_period = 60.0  # seconds between repeated alerts
 
     @property
     def name(self) -> str:
@@ -32,7 +33,7 @@ class KarmaDetector(BaseDetector):
 
     def reset(self) -> None:
         self._bssid_ssids.clear()
-        self._alerted_bssid.clear()
+        self._alert_timestamps.clear()
 
     def process(self, frame: ParsedFrame) -> List[Alert]:
         alerts: List[Alert] = []
@@ -51,12 +52,22 @@ class KarmaDetector(BaseDetector):
             return alerts
 
         bssid_lower = bssid.lower()
+
+        # Prevent unbounded memory usage
+        if len(self._bssid_ssids) > 1000 and bssid_lower not in self._bssid_ssids:
+            # Drop oldest 200 entries
+            keys_to_drop = list(self._bssid_ssids.keys())[:200]
+            for k in keys_to_drop:
+                del self._bssid_ssids[k]
+
         self._bssid_ssids[bssid_lower].add(ssid)
 
         distinct_ssids = self._bssid_ssids[bssid_lower]
 
-        if len(distinct_ssids) >= self.ssid_threshold and bssid_lower not in self._alerted_bssid:
-            self._alerted_bssid.add(bssid_lower)
+        if len(distinct_ssids) >= self.ssid_threshold:
+            last_alert = self._alert_timestamps.get(bssid_lower, 0.0)
+            if frame.timestamp - last_alert >= self.cooldown_period:
+                self._alert_timestamps[bssid_lower] = frame.timestamp
 
             ssid_sample = list(distinct_ssids)[:5]
             desc = (

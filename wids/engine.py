@@ -80,36 +80,41 @@ class SentinelEngine:
         return alerts_generated
 
     def _track_entities(self, frame: ParsedFrame) -> None:
-        """Catalog APs and clients from the frame."""
-        # Catalog AP
-        if frame.subtype in (FrameSubtype.BEACON, FrameSubtype.PROBE_RESP):
-            bssid = frame.addr3 or frame.addr2
-            if bssid and frame.ssid:
-                bssid_lower = bssid.lower()
-                if bssid_lower not in self.discovered_aps:
-                    is_auth = bssid_lower in self.config.authorized_aps
-                    self.discovered_aps[bssid_lower] = AccessPoint(
-                        bssid=bssid_lower,
-                        ssid=frame.ssid,
-                        channel=frame.channel,
-                        crypto_type=frame.crypto_type,
-                        first_seen=frame.timestamp,
-                        last_seen=frame.timestamp,
-                        is_authorized=is_auth,
-                    )
-                else:
-                    ap = self.discovered_aps[bssid_lower]
-                    ap.last_seen = frame.timestamp
-                    ap.beacon_count += 1
-                    if frame.channel:
-                        ap.channel = frame.channel
+        """Catalog APs and clients from the frame with memory bounding."""
+        try:
+            # Catalog AP
+            if frame.subtype in (FrameSubtype.BEACON, FrameSubtype.PROBE_RESP):
+                bssid = frame.addr3 or frame.addr2
+                if bssid and frame.ssid:
+                    bssid_lower = bssid.lower()
+                    if bssid_lower not in self.discovered_aps:
+                        if len(self.discovered_aps) < 5000:
+                            is_auth = bssid_lower in self.config.authorized_aps
+                            self.discovered_aps[bssid_lower] = AccessPoint(
+                                bssid=bssid_lower,
+                                ssid=frame.ssid,
+                                channel=frame.channel,
+                                crypto_type=frame.crypto_type,
+                                first_seen=frame.timestamp,
+                                last_seen=frame.timestamp,
+                                is_authorized=is_auth,
+                            )
+                    else:
+                        ap = self.discovered_aps[bssid_lower]
+                        ap.last_seen = frame.timestamp
+                        ap.beacon_count += 1
+                        if frame.channel:
+                            ap.channel = frame.channel
 
-        # Catalog Client addresses (transmitter or receiver that is not an AP or broadcast)
-        for addr in (frame.addr1, frame.addr2):
-            if addr and addr.lower() != "ff:ff:ff:ff:ff:ff":
-                addr_l = addr.lower()
-                if addr_l not in self.discovered_aps:
-                    self.discovered_clients.add(addr_l)
+            # Catalog Client addresses (transmitter or receiver that is not an AP or broadcast)
+            if len(self.discovered_clients) < 10000:
+                for addr in (frame.addr1, frame.addr2):
+                    if addr and addr.lower() != "ff:ff:ff:ff:ff:ff":
+                        addr_l = addr.lower()
+                        if addr_l not in self.discovered_aps:
+                            self.discovered_clients.add(addr_l)
+        except Exception:
+            pass
 
     def print_summary(self) -> None:
         """Print an execution summary report."""

@@ -47,14 +47,18 @@ class PacketSource:
         self.running = False
 
     def _handle_packet(self, raw_pkt) -> None:
-        """Process an individual raw Scapy packet."""
+        """Process an individual raw Scapy packet safely."""
         if not self.running:
             return
 
-        self.packets_processed += 1
-        parsed = FrameParser.parse(raw_pkt)
-        if parsed and self.callback:
-            self.callback(parsed)
+        try:
+            self.packets_processed += 1
+            parsed = FrameParser.parse(raw_pkt)
+            if parsed and self.callback:
+                self.callback(parsed)
+        except Exception:
+            # Safely drop malformed/fuzzed frames without crashing capture loop
+            pass
 
     def _read_pcap(self, max_count: int = 0) -> None:
         """Read and replay packets from an offline PCAP/PCAPNG file."""
@@ -71,11 +75,19 @@ class PacketSource:
 
     def _sniff_live(self, count: int = 0) -> None:
         """Sniff packets from a live network interface."""
-        sniff(
-            iface=self.interface,
-            filter=self.bpf_filter,
-            prn=self._handle_packet,
-            count=count,
-            store=False,
-            stop_filter=lambda _: not self.running,
-        )
+        try:
+            sniff(
+                iface=self.interface,
+                filter=self.bpf_filter,
+                prn=self._handle_packet,
+                count=count,
+                store=False,
+                stop_filter=lambda _: not self.running,
+            )
+        except PermissionError:
+            raise PermissionError(
+                f"Permission denied on interface '{self.interface}'. "
+                "Raw packet capture requires root/sudo privileges (or CAP_NET_RAW / CAP_NET_ADMIN capabilities)."
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error during packet capture on interface '{self.interface}': {e}")

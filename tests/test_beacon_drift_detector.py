@@ -45,3 +45,31 @@ def test_multicast_bit_on_bssid_alert(base_config):
     assert len(alerts) == 1
     assert alerts[0].rule_name == "WIDS-RULE-006:MALFORMED_BSSID"
     assert alerts[0].severity == Severity.HIGH
+
+
+def test_out_of_order_beacon_no_false_positive(base_config):
+    detector = BeaconDriftDetector(base_config)
+    # Packet 1 at seq 100
+    raw1 = make_beacon("NormalNet", "00:11:22:33:44:55", seq=100, timestamp=1000.0)
+    detector.process(FrameParser.parse(raw1))
+
+    # Packet 2 is a retransmitted frame that arrives slightly late (seq 98, delta -2)
+    raw2 = make_beacon("NormalNet", "00:11:22:33:44:55", seq=98, timestamp=1000.05)
+    alerts = detector.process(FrameParser.parse(raw2))
+
+    # Must NOT trigger sequence jump false positive
+    assert len(alerts) == 0
+
+
+def test_beacon_wraparound_normal(base_config):
+    detector = BeaconDriftDetector(base_config)
+    # Frame at seq 4094
+    raw1 = make_beacon("NormalNet", "00:11:22:33:44:55", seq=4094, timestamp=1000.0)
+    detector.process(FrameParser.parse(raw1))
+
+    # Next frame naturally wraps to seq 2 (delta 4)
+    raw2 = make_beacon("NormalNet", "00:11:22:33:44:55", seq=2, timestamp=1000.1)
+    alerts = detector.process(FrameParser.parse(raw2))
+
+    # Must NOT trigger sequence jump alert on normal wrap-around
+    assert len(alerts) == 0
